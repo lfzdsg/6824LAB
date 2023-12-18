@@ -1,0 +1,4 @@
+--- FAIL: TestManyElections2A (5.89s)
+    config.go:400: expected one leader, got none
+--- FAIL: TestManyElections2A (11.63s)
+    testing.go:1312: race detected during execution of test
