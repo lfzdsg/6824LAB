@@ -150,8 +150,42 @@ go test -run TestManyElections2A -race > debug.txt
 
     实现上：
         现在我们希望实现日志复制，讲讲具体实现。client那边发送命令到leader，这时会包含一个command，我们将这个command存入日志文件中。
-        对于leader来说，需要维护这几个东西：
-            1.日志文件  logs
-            2.最后一个提交日志的位置    LastCommit
-            3.每个节点的追加日志index   
+        然后再在一次选主结束后，我们就发送心跳把日志发送到所有的节点。
+        我们维护几个东西。
+        所有机器维护一个commitIndex，和lastApplied。这两个分别的作用：下一个提交的日志索引，已经提交的最后一个日志索引。
+
+        commitIndex是下一个要提交的日志索引，我们知道提交就是说一个命令被超过半数的机器复制过后在状态机运行就算提交，疑问是对于follower节点来说它怎么知道该条目是提交的。那么lastApplied的作用就是这个，我们可以认为如果一个新的日志复制过来了，那么前面的日志就是提交的。
+        不过我们会在RPC中发送leader的commitIndex，所以和leader同步就好。
+        
+        leader维护nextIndex，matchIndex。
+        其中nextIndex是下一个发送的日志，matchIndex是下一个要复制的索引。
+        
+        
+        我们简单模拟一下，在一次选举结束后，现在有一个leader节点和一群follower节点。他们的日志都是初始化的空日志，我们会在开始的时候初始化一个日志，这个日志只有一条信息，那就是{index:0,lterm:0,command:nil}。现在leader接收到一个命令,将命令放到自己的日志中，这时候开启一轮心跳的时候就把该命令发到其他机器。然后我们根据和返回的结果更新nextIndex和matchIndex。而且当matchIndex中超过半数的值都超过了某个值说明commitIndex应该自增。
+        我们发送
+            term leader 任期
+            leaderId 用来 follower 重定向到 leader
+            prevLogIndex 前继日志记录的索引
+            prevLogItem 前继日志的任期
+            entries[] 存储日志记录
+            leaderCommit leader 的 commitIndex
+
+        //2B
+	    log 				[]LogEntry	//日志记录每条日记记录包含状态机的命令和从 leader 接受到日志的任期。(索引初始化为 1)
+	    logLock				sync.Mutex
+	    //所有机器的可变状态
+	    commitIndex 		int		//将被提交的日志记录的索引（初值为 0 且单调递增）
+	    lastApplied			int	 	//已经被提交到状态机的最后一个日志的索引（初值为0 且单调递增）
+	    //leader 的可变状态：
+	    nextIndex		[]int 	//每台机器在数组占据一个元素，元素的值为下条发送到该机器的日志索引 (初始值为 leader 最新一条日志的索引 +1)
+	    matchIndex			[]int 	//每台机器在数组中占据一个元素，元素的记录将要复制给该机器日志的索引。
+
+        log是命令日志，我想这个是Start那里传过来的日志命令。这个命令我们追加到leader的日志中。
+        commitIndex 这里指的是将要提交的日志位置，也就是心跳将要发送的指令
+	    lastApplied 指的是上一个提交的指令索引
+        nextIndex   这里维护每一个节点
+        
+
+
+
 
