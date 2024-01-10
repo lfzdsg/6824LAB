@@ -118,8 +118,7 @@ go test -run TestManyElections2A -race > debug.txt
     对于接受选举voteRPC的节点，其状态也是三种：F，C，L。
     F:收到vote请求，先判断请求任期与自己当前任期的区别。
         大于 --> 请求节点是合法的。这时说明当前节点还没有到目标任期，所以没有投过票，直接将票投过去，将任期修改为该任期。
-        等于 --> 正常情况下两个节点不会有相同，此时如果相同只可能是当前节点节点也是C。也可能是L，但是这说明之前当前此时的请求节点存在
-                 错误的运行情况，也就是错过了某些任期，所以请求节点不应该当选。综上该情况不投票。
+        等于 --> 正常情况下两个节点不会有相同，此时如果相同只可能是当前节点节点也是C。也可能是L，但是这说明之前当前此时的请求节点存在错误的运行情况，也就是错过了某些任期，所以请求节点不应该当选。综上该情况不投票。
         小于 --> 请求节点不合法。不投票。
 
     C:发送vote请求。收到投票的信息。
@@ -132,6 +131,12 @@ go test -run TestManyElections2A -race > debug.txt
 
 
 2B:日志复制
+    go test -run TestBasicAgree2B > debug.txt
+    go test -run TestFailAgree2B > debug.txt
+    go test -run TestRejoin2B > debug.txt
+    go test -run TestBackup2B > debug.txt
+    
+    go test -run 2B > debug.txt
 
     日志包含三个信息，状态机指令，leader的任期号，日志号。
     1-通常我们认为如果两个日志记录有相同的索引和任期，那么这两条日志记录中的命令也相同
@@ -187,5 +192,16 @@ go test -run TestManyElections2A -race > debug.txt
         
 
 
+问题：
+    config.go:550: one(106) failed to reach agreement
+    
+    panic: runtime error: index out of range [6] with length 2
+    这里说的是当前节点的日志只有2个，但是leader为当前节点维持的前置日志是6，所以有问题，关键是为什么当前节点没有把日志复制完全。
+    找到了，问题是因为传过来的前置日志比现在节点拥有的日志要大，还要判断长度
 
-
+     FAIL: TestBackup2B (24.51s)
+    config.go:550: one(2165423027531050681) failed to reach agreement
+    错误原因：之前是因为在网络分区后重新苏醒的三个节点没有形成新的网络，现在是我们的任务提交太慢导致当前的指令没有完成提交。大概的原因是新的leader的前继日志错误然后一直往前找到第一个没有匹配的日志，这需要很多次RPC，理论上是可行的，但是当前实验是有时间限制的。
+    我们知道论文中对这里描述的是如果复制的日志不对那么nextindex--,但是现在的话我们要把这个过程减少到几次就好。
+    -二分：二分应该怎么写
+    
